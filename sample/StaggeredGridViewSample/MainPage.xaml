@@ -1,0 +1,24 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage 
+    xmlns="http://xamarin.com/schemas/2014/forms"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:controls="clr-namespace:Xam.Controls;assembly=StaggeredGridView.Core"
+    x:Class="StaggeredGridViewSample.MainPage">
+    <ContentPage.Content>
+        <Grid>
+            <controls:StaggeredGridView x:Name="staggeredGridView" Spacing="16">
+                <controls:StaggeredGridView.ItemTemplate>
+                    <DataTemplate>
+                        <ViewCell>
+                            <StackLayout Orientation="Vertical">
+                                <Label Text="{Binding}"/>
+                                <Label Text="432563654"/>
+                                <Label Text="432563654"/>
+                            </StackLayout>
+                        </ViewCell>
+                    </DataTemplate>
+                </controls:StaggeredGridView.ItemTemplate>
+            </controls:StaggeredGridView>
+        </Grid>
+    </ContentPage.Content>
+</ContentPage>
