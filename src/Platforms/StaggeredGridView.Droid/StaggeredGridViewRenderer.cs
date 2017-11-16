@@ -129,9 +129,9 @@ namespace StaggeredGridView.Droid
         public override void OnViewRecycled(Object holder)
         {
             base.OnViewRecycled(holder);
-            if (holder is RecyclerViewHolder)
+            if (holder is RecyclerViewHolder viewHolder)
             {
-                (holder as RecyclerViewHolder)._viewCell.SendDisappearing();
+                viewHolder.ViewCell.SendDisappearing();
             }
         }
 
@@ -140,21 +140,31 @@ namespace StaggeredGridView.Droid
             var dataContext = (_view.ItemsSource as IList)[position];
             if (dataContext != null)
             {
-                var dataTemplate = _view.ItemTemplate;
                 ViewCell viewCell;
-                if (dataTemplate is DataTemplateSelector selector)
-                {
-                    var template = selector.SelectTemplate((_view.ItemsSource as IList)[position], _view.Parent);
+                var template = _view.ItemTemplate;
+                if (template is DataTemplateSelector)
+                    template = ((DataTemplateSelector)template).SelectTemplate(dataContext, _view);
+                if (template != null)
                     viewCell = template.CreateContent() as ViewCell;
-                }
                 else
-                {
-                    viewCell = dataTemplate.CreateContent() as ViewCell;
-                }
+                    viewCell = _view.CreateDefaultCell(dataContext) as ViewCell;
                 viewCell.SendAppearing();
-
-                viewHolder._viewCell = viewCell;
                 viewHolder.UpdateUi(viewCell, dataContext, _view);
+                //var dataTemplate = _view.ItemTemplate;
+                //ViewCell viewCell;
+                //if (dataTemplate is DataTemplateSelector selector)
+                //{
+                //    var template = selector.SelectTemplate((_view.ItemsSource as IList)[position], _view.Parent);
+                //    viewCell = template.CreateContent() as ViewCell;
+                //}
+                //else
+                //{
+                //    viewCell = dataTemplate.CreateContent() as ViewCell;
+                //}
+                //viewCell.SendAppearing();
+
+                //viewHolder._viewCell = viewCell;
+                //viewHolder.UpdateUi(viewCell, dataContext, _view);
             }
         }
 
@@ -167,50 +177,79 @@ namespace StaggeredGridView.Droid
 
     public class RecyclerViewHolder : RecyclerView.ViewHolder
     {
-        internal Cell _viewCell;
 
         public RecyclerViewHolder(View itemView) : base(itemView)
         {
             ItemView = itemView;
         }
 
+        public Cell ViewCell { get; set; }
+
+        public void SetCell(object dataContext, Xam.Controls.StaggeredGridView gridView)
+        {
+            var contentLayout = (LinearLayout)ItemView;
+            Cell cell;
+            var template = gridView.ItemTemplate;
+            var bindingContext = dataContext;
+            
+            if (template is DataTemplateSelector)
+                template = ((DataTemplateSelector)template).SelectTemplate(bindingContext, gridView);
+            if (template != null)
+                cell = template.CreateContent() as Cell;
+            else
+                cell = gridView.CreateDefaultCell(bindingContext);
+            cell.Parent = gridView;
+            BindableObject.SetInheritedBindingContext(cell, bindingContext);
+
+
+            if (Platform.GetRenderer((cell as ViewCell).View) == null)
+                Platform.SetRenderer((cell as ViewCell).View, Platform.CreateRenderer((cell as ViewCell).View));
+            var renderer = Platform.GetRenderer((cell as ViewCell).View);
+            var size = renderer.GetDesiredSize(int.MaxValue, int.MaxValue);
+            renderer.View.LayoutParameters = new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent)
+            {
+                Height = (int) size.Request.Height,
+                Width = (int) size.Request.Width
+            };
+            contentLayout.RemoveAllViews();
+            contentLayout.AddView(renderer.View);
+        }
 
         public void UpdateUi(ViewCell viewCell, object dataContext, Xam.Controls.StaggeredGridView collectionView)
         {
             var contentLayout = (LinearLayout) ItemView;
+            ViewCell = viewCell;
+            viewCell.BindingContext = dataContext;
+            viewCell.Parent = collectionView;
+            if (Platform.GetRenderer(viewCell.View) == null)
+                Platform.SetRenderer(viewCell.View, Platform.CreateRenderer(viewCell.View));
+            var renderer = Platform.GetRenderer(viewCell.View);
+            var metrics = Resources.System.DisplayMetrics;
+            // Layout and Measure Xamarin Forms View
+            var elementSizeRequest = viewCell.View.Measure(collectionView.Width, Cell.DefaultCellHeight, MeasureFlags.IncludeMargins);
 
-            //var a = CellFactory.GetCell(viewCell, contentLayout, contentLayout, contentLayout.Context, viewCell.View);
-            //viewCell.BindingContext = dataContext;
-            //viewCell.Parent = collectionView;
-            //if (Platform.GetRenderer(viewCell.View) == null)
-            //    Platform.SetRenderer(viewCell.View, Platform.CreateRenderer(viewCell.View));
-            //var renderer = Platform.GetRenderer(viewCell.View);
-            //var metrics = Resources.System.DisplayMetrics;
-            //// Layout and Measure Xamarin Forms View
-            //var elementSizeRequest = viewCell.View.Measure(double.PositiveInfinity, Xamarin.Forms.Cell.DefaultCellHeight);
+            var height = (int) ((elementSizeRequest.Request.Height + viewCell.View.Margin.Top + viewCell.View.Margin.Bottom) *
+                                metrics.Density);
+            var width = (int) ((elementSizeRequest.Request.Width + viewCell.View.Margin.Left + viewCell.View.Margin.Right) *
+                               metrics.Density);
 
-            //var height = (int) ((Xamarin.Forms.Cell.DefaultCellHeight + viewCell.View.Margin.Top + viewCell.View.Margin.Bottom) *
-            //                    metrics.Density);
-            //var width = (int) ((collectionView.Width + viewCell.View.Margin.Left + viewCell.View.Margin.Right) *
-            //                   metrics.Density);
+            viewCell.View.Layout(new Rectangle(0, 0, width, height));
 
-            //viewCell.View.Layout(new Rectangle(0, 0, viewCell.View.WidthRequest, viewCell.View.HeightRequest));
-
-            //// Layout Android View
-            //var layoutParams =
-            //    new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent)
-            //    {
-            //        Height = height,
-            //        Width = width
-            //    };
+            // Layout Android View
+            var layoutParams =
+                new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent)
+                {
+                    Height = height,
+                    Width = width
+                };
 
 
-            //var viewGroup = renderer.View;
-            //viewGroup.LayoutParameters = layoutParams;
-            //viewGroup.Layout(0, 0, width, height);
+            var viewGroup = renderer.View;
+            viewGroup.LayoutParameters = layoutParams;
+            viewGroup.Layout(0, 0, width, height);
 
-            //contentLayout.RemoveAllViews();
-            //contentLayout.AddView(renderer.View);
+            contentLayout.RemoveAllViews();
+            contentLayout.AddView(renderer.View);
         }
     }
 
