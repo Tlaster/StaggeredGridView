@@ -194,8 +194,7 @@ namespace StaggeredGridView.Droid
 
 
         public void UpdateUi(ViewCell viewCell, object dataContext, Xam.Controls.StaggeredGridView collectionView)
-        {
-            
+        { 
             var contentLayout = (LinearLayout)ItemView;
             ViewCell = viewCell;
             viewCell.BindingContext = dataContext;
@@ -205,10 +204,11 @@ namespace StaggeredGridView.Droid
                 Platform.SetRenderer(viewCell.View, Platform.CreateRenderer(viewCell.View));
             }
             var renderer = Platform.GetRenderer(viewCell.View);
+            var a = renderer.GetDesiredSize(int.MaxValue, int.MaxValue);
             renderer.UpdateLayout();
             var metrics = Resources.System.DisplayMetrics;
             // Layout and Measure Xamarin Forms View
-            var elementSizeRequest = viewCell.View.Measure(double.MaxValue, double.MaxValue);
+            var elementSizeRequest = viewCell.View.Measure(100, double.MaxValue);
             
             var height = ContextHelper.Dp2Px(contentLayout.Context,
                 (int) elementSizeRequest.Request.Height);
@@ -229,39 +229,6 @@ namespace StaggeredGridView.Droid
 
             contentLayout.RemoveAllViews();
             contentLayout.AddView(renderer.View);
-            
-//            var contentLayout = (LinearLayout) ItemView;
-//            ViewCell = viewCell;
-//            viewCell.BindingContext = dataContext;
-//            viewCell.Parent = collectionView;
-//            if (Platform.GetRenderer(viewCell.View) == null)
-//                Platform.SetRenderer(viewCell.View, Platform.CreateRenderer(viewCell.View));
-//            var renderer = Platform.GetRenderer(viewCell.View);
-//            // Layout and Measure Xamarin Forms View
-//            var elementSizeRequest = viewCell.View.Measure(ContextHelper.Dp2Px(contentLayout.Context, 100), Cell.DefaultCellHeight);
-//
-//            var height = ContextHelper.Dp2Px(contentLayout.Context,
-//                (int) elementSizeRequest.Request.Height);
-//            var width = ContextHelper.Dp2Px(contentLayout.Context,
-//                (int) elementSizeRequest.Request.Width);
-//
-//            viewCell.View.Layout(new Rectangle(0, 0, width, height));
-//
-//            // Layout Android View
-//            var layoutParams =
-//                new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent)
-//                {
-//                    Height = height,
-//                    Width = width
-//                };
-//
-//
-//            var viewGroup = renderer.View;
-//            viewGroup.LayoutParameters = layoutParams;
-//            viewGroup.Layout(0, 0, width, height);
-//
-//            contentLayout.RemoveAllViews();
-//            contentLayout.AddView(renderer.View);
         }
     }
 
