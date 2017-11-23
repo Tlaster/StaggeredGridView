@@ -1,5 +1,8 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Linq;
 using CoreGraphics;
 using Foundation;
@@ -8,13 +11,253 @@ using UIKit;
 using Xamarin.Forms;
 using Xamarin.Forms.Internals;
 using Xamarin.Forms.Platform.iOS;
+using PropertyChangingEventArgs = Xamarin.Forms.PropertyChangingEventArgs;
 
 [assembly: ExportRenderer(typeof(Xam.Controls.StaggeredGridView), typeof(StaggeredGridViewRenderer))]
 
 namespace StaggeredGridView.iOS
 {
-    public class StaggeredGridViewRenderer : ViewRenderer<Xam.Controls.StaggeredGridView, UIView>
+    public class StaggeredGridViewRenderer : ViewRenderer<Xam.Controls.StaggeredGridView, UICollectionView>
     {
+        private ViewDataSource _dataSource;
+
+        private ViewDataSource DataSource =>
+            _dataSource ?? (_dataSource = new ViewDataSource(GetCell, RowsInSection, ItemSelected));
+
+        protected override void OnElementChanged(ElementChangedEventArgs<Xam.Controls.StaggeredGridView> e)
+        {
+            base.OnElementChanged(e);
+
+            if (e.OldElement != null)
+                Unbind(e.OldElement);
+            if (e.NewElement != null)
+                if (Control == null)
+                {
+                    var collectionView = new UICollectionView(default(CGRect), new WaterfallLayout())
+                    {
+                        AllowsMultipleSelection = false,
+                        ContentInset = new UIEdgeInsets((float) Element.Padding.Top, (float) Element.Padding.Left,
+                            (float) Element.Padding.Bottom, (float) Element.Padding.Right),
+                        BackgroundColor = Element.BackgroundColor.ToUIColor()
+                    };
+
+                    Bind(e.NewElement);
+
+                    collectionView.Source = DataSource;
+                    //collectionView.Delegate = this.GridViewDelegate;
+
+                    SetNativeControl(collectionView);
+                }
+        }
+
+        public void ItemSelected(UICollectionView tableView, NSIndexPath indexPath)
+        {
+            var item = Element.ItemsSource.Cast<object>().ElementAt(indexPath.Row);
+            Element.InvokeItemSelectedEvent(this, item);
+        }
+
+        public int RowsInSection(UICollectionView collectionView, nint section)
+        {
+            return ((ICollection) Element.ItemsSource).Count;
+        }
+
+        public UICollectionViewCell GetCell(UICollectionView collectionView, NSIndexPath indexPath)
+        {
+            var item = Element.ItemsSource.Cast<object>().ElementAt(indexPath.Row);
+            if (!(Element.ItemTemplate.CreateContent() is ViewCell viewCellBinded)) return null;
+
+            viewCellBinded.BindingContext = item;
+            return GetCell(collectionView, viewCellBinded, indexPath);
+        }
+
+        protected virtual UICollectionViewCell GetCell(UICollectionView collectionView, ViewCell item,
+            NSIndexPath indexPath)
+        {
+            if (!(collectionView.DequeueReusableCell(new NSString(CustomViewCell.Key), indexPath) is CustomViewCell
+                collectionCell)) return null;
+
+            collectionCell.ViewCell = item;
+
+            return collectionCell;
+        }
+
+
+        private void Unbind(Xam.Controls.StaggeredGridView oldElement)
+        {
+            if (oldElement == null) return;
+
+            oldElement.PropertyChanging -= ElementPropertyChanging;
+            oldElement.PropertyChanged -= ElementPropertyChanged;
+
+            if (oldElement.ItemsSource is INotifyCollectionChanged itemsSource)
+                itemsSource.CollectionChanged -= DataCollectionChanged;
+        }
+
+        private void Bind(Xam.Controls.StaggeredGridView newElement)
+        {
+            if (newElement == null) return;
+
+            newElement.PropertyChanging += ElementPropertyChanging;
+            newElement.PropertyChanged += ElementPropertyChanged;
+
+            if (newElement.ItemsSource is INotifyCollectionChanged source)
+                source.CollectionChanged += DataCollectionChanged;
+        }
+
+        private void ElementPropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == Xam.Controls.StaggeredGridView.ItemsSourceProperty.PropertyName)
+            {
+                if (Element.ItemsSource is INotifyCollectionChanged newItemsSource)
+                {
+                    newItemsSource.CollectionChanged += DataCollectionChanged;
+                    Control.ReloadData();
+                }
+            }
+//            else if (e.PropertyName == "ItemWidth" || e.PropertyName == "ItemHeight")
+//            {
+//                Control.ItemSize = new CGSize((float) Element.ItemWidth, (float) Element.ItemHeight);
+//            }
+        }
+
+        private void ElementPropertyChanging(object sender, PropertyChangingEventArgs e)
+        {
+            if (e.PropertyName == "ItemsSource")
+                if (Element.ItemsSource is INotifyCollectionChanged oldItemsSource)
+                    oldItemsSource.CollectionChanged -= DataCollectionChanged;
+        }
+
+        private void DataCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+        {
+            InvokeOnMainThread(() =>
+            {
+                try
+                {
+                    if (Control == null)
+                        return;
+
+                    Control.ReloadData();
+                }
+                catch
+                {
+                    // ignored
+                }
+            });
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+            if (disposing && _dataSource != null)
+            {
+                Unbind(Element);
+                _dataSource.Dispose();
+                _dataSource = null;
+            }
+        }
+    }
+
+    public class CustomViewCell : UICollectionViewCell
+    {
+        public const string Key = "StaggeredGridViewCell";
+        private UIView _view;
+        private ViewCell _viewCell;
+
+        [Export("initWithFrame:")]
+        public CustomViewCell(CGRect frame) : base(frame)
+        {
+            // SelectedBackgroundView = new GridItemSelectedViewOverlay (frame);
+            // this.BringSubviewToFront (SelectedBackgroundView);
+        }
+
+        public ViewCell ViewCell
+        {
+            get => _viewCell;
+            set
+            {
+                if (_viewCell != value)
+                    UpdateCell(value);
+            }
+        }
+
+        public override void LayoutSubviews()
+        {
+            base.LayoutSubviews();
+            var frame = ContentView.Frame;
+            frame.X = (Bounds.Width - frame.Width) / 2;
+            frame.Y = (Bounds.Height - frame.Height) / 2;
+            ViewCell.View.Layout(frame.ToRectangle());
+            _view.Frame = frame;
+        }
+
+        private void UpdateCell(ViewCell cell)
+        {
+            if (_viewCell != null)
+                _viewCell.PropertyChanged -= HandlePropertyChanged;
+
+            _viewCell = cell;
+            _viewCell.PropertyChanged += HandlePropertyChanged;
+            //this.viewCell.SendAppearing ();
+            UpdateView();
+        }
+
+        private void HandlePropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            UpdateView();
+        }
+
+
+        private void UpdateView()
+        {
+            _view?.RemoveFromSuperview();
+
+            _view = Platform.CreateRenderer(_viewCell.View).NativeView;
+            _view.AutoresizingMask = UIViewAutoresizing.All;
+            _view.ContentMode = UIViewContentMode.ScaleToFill;
+
+            AddSubview(_view);
+        }
+    }
+
+    public class ViewDataSource : UICollectionViewSource
+    {
+        public delegate UICollectionViewCell OnGetCell(UICollectionView collectionView, NSIndexPath indexPath);
+
+        public delegate void OnItemSelected(UICollectionView collectionView, NSIndexPath indexPath);
+
+        public delegate int OnRowsInSection(UICollectionView collectionView, nint section);
+
+        private readonly OnGetCell _onGetCell;
+        private readonly OnItemSelected _onItemSelected;
+
+        private readonly OnRowsInSection _onRowsInSection;
+
+        public ViewDataSource(OnGetCell onGetCell, OnRowsInSection onRowsInSection, OnItemSelected onItemSelected)
+        {
+            _onGetCell = onGetCell;
+            _onRowsInSection = onRowsInSection;
+            _onItemSelected = onItemSelected;
+        }
+
+        public override nint GetItemsCount(UICollectionView collectionView, nint section)
+        {
+            return _onRowsInSection(collectionView, section);
+        }
+
+        public override void ItemSelected(UICollectionView collectionView, NSIndexPath indexPath)
+        {
+            _onItemSelected(collectionView, indexPath);
+        }
+
+
+        public override UICollectionViewCell GetCell(UICollectionView collectionView, NSIndexPath indexPath)
+        {
+            var cell = _onGetCell(collectionView, indexPath);
+
+            cell.AddGestureRecognizer(new UITapGestureRecognizer(v => { ItemSelected(collectionView, indexPath); }));
+
+            return cell;
+        }
     }
 
     public interface IWaterfallLayoutDelegate : IUICollectionViewDelegate
@@ -329,9 +572,7 @@ namespace StaggeredGridView.iOS
             {
                 var attr = _allItemAttributes[i];
                 if (rect.IntersectsWith(attr.Frame))
-                {
                     attrs.Add(attr);
-                }
             }
             return attrs.ToArray();
         }
